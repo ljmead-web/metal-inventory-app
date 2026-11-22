@@ -24,7 +24,18 @@ async function initializeMicrosoftAuth() {
     console.error('Microsoft authentication error:', error);
   }
 }
+async function signInMicrosoft() {
+  try {
+    await msalInstance.initialize();
 
+    await msalInstance.loginRedirect({
+      scopes: microsoftScopes
+    });
+  } catch (error) {
+    console.error('Microsoft sign-in failed:', error);
+    setSyncStatus('Microsoft sign-in failed: ' + error.message);
+  }
+}
 initializeMicrosoftAuth();
 
 // Synchronization UI and adapter boundary. No credentials or fake cloud writes.

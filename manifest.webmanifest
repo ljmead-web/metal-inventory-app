@@ -1,1 +1,1 @@
-{"name":"Metal Inventory","short_name":"Metals","start_url":"./index.html","display":"standalone","background_color":"#0d1725","theme_color":"#142338","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{"name":"Metal Inventory","short_name":"Metals","start_url":"./index.html","display":"standalone","background_color":"#0d1725","theme_color":"#142338","icons":[{"src":"metals-icon.png","sizes":"any","type":"type":"image/png","purpose":"any maskable"}]}

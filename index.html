@@ -282,11 +282,46 @@ input {
 .guide-table td {
     padding: 3px;
     line-height: 1.15;
+    vertical-align: middle;
 }
 
 #productCount {
     display: block;
     margin: 2px 0 5px;
+}
+
+/* PREMIUM PERCENTAGES */
+
+.premium {
+    display: block;
+    font-size: 10px;
+    font-weight: normal;
+    line-height: 1.1;
+    margin-top: 1px;
+}
+
+/* PURCHASE ACTIVITY YEAR SELECTOR */
+
+.activity-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin: 6px 0 4px;
+}
+
+.activity-heading h2 {
+    margin: 0;
+}
+
+#purchaseYear {
+    font-family: inherit;
+    font-size: 16px;
+    color: #244563;
+    background: #f5f9fd;
+    border: 1px solid #94b1cc;
+    border-radius: 4px;
+    padding: 3px 8px;
 }
 
 [hidden] {
@@ -338,6 +373,11 @@ footer button {
         padding: 3px 2px;
     }
 
+    .premium {
+        font-size: 10px;
+        margin-top: 0;
+    }
+
     .big {
         font-size: 19px;
     }
@@ -348,6 +388,7 @@ footer button {
 <body>
 
 <header>
+
     <div class="actions">
         <h1>Metals</h1>
         <button id="login">Sign in to Microsoft</button>
@@ -360,13 +401,18 @@ footer button {
         <button data-tab="holdings">Dashboard</button>
         <button data-tab="guide" class="active">Buying Guide</button>
     </nav>
+
 </header>
 
 <main>
 
+    <!-- DASHBOARD -->
+
     <section id="holdings" hidden>
         <p>Sign in to load your workbook.</p>
     </section>
+
+    <!-- BUYING GUIDE -->
 
     <section id="guide">
 
@@ -393,6 +439,8 @@ footer button {
 
         <small id="productCount"></small>
 
+        <!-- MONTHLY PURCHASE ACTIVITY -->
+
         <section id="activity">
         </section>
 
@@ -409,7 +457,7 @@ footer button {
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@4.25.1/lib/msal-browser.min.js"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 
 </body>
 </html>

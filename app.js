@@ -46,7 +46,11 @@ const pct = v =>
         ? fmt(v * 100, 1) + '%'
         : '—';
 
-let auth, account, products = [];
+let auth;
+let account;
+let products = [];
+let selectedMetal = 'All';
+let workbookLoaded = false;
 
 function status(s) {
     $('status').textContent = s;
@@ -59,6 +63,8 @@ function controls(busy = false) {
     $('login').disabled = busy;
     $('logout').disabled = busy;
 }
+
+// READ EXCEL WORKBOOK
 
 function render(wb) {
 
@@ -80,6 +86,19 @@ function render(wb) {
     }
 
     const total = v('C6') + v('C7');
+
+    // SPOT PRICES
+
+    $('guideSpot').innerHTML = `
+        <span class="gold">
+            Gold: ${money(v('B2'))}
+        </span>
+        <span class="silver">
+            Silver: ${money(v('B3'))}
+        </span>
+    `;
+
+    // GOAL PROGRESS
 
     function goalRow(name, actual, target, currency = false) {
 
@@ -105,10 +124,11 @@ function render(wb) {
                     <progress max="1" value="${progress}">
                     </progress>
                 </td>
-            </tr>`;
+            </tr>
+        `;
     }
 
-    // COMPACT HOLDINGS TABLE
+    // DASHBOARD
 
     $('holdings').innerHTML = `
 
@@ -175,7 +195,8 @@ function render(wb) {
         </table>
     `;
 
-    // MONTHLY AND ANNUAL PURCHASE ACTIVITY
+    // PURCHASE ACTIVITY
+    // Located at bottom of Buying Guide
 
     const months = [
         'Jan', 'Feb', 'Mar', 'Apr',
@@ -209,6 +230,7 @@ function render(wb) {
                 </thead>
 
                 <tbody>
+
                     ${months.map((month, i) => {
 
                         const r = i + 34;
@@ -221,7 +243,9 @@ function render(wb) {
                                 <td>${fmt(v('D' + r), 2)}</td>
                                 <td>${money(v('E' + r))}</td>
                                 <td>${money(v('F' + r))}</td>
-                            </tr>`;
+                            </tr>
+                        `;
+
                     }).join('')}
 
                     <tr class="total-row">
@@ -232,40 +256,122 @@ function render(wb) {
                         <td>${money(v('E46'))}</td>
                         <td>${money(v('F46'))}</td>
                     </tr>
+
                 </tbody>
 
             </table>
         </div>
     `;
 
-    // READ GOLD AND SILVER GUIDE PRODUCTS
+    // LOAD ALL GOLD AND SILVER PRODUCTS
+    // No fixed product list or hardcoded prices
 
     products = XLSX.utils.sheet_to_json(g, {
         header: 1,
         range: 3,
         defval: null,
         raw: true
-    }).filter(r =>
-        ['Gold', 'Silver'].includes(r[0]) && r[1]
+    })
+    .map(r => {
+        const metal = String(r[0] ?? '').trim().toLowerCase();
+
+        return [
+            metal === 'gold' ? 'Gold' :
+            metal === 'silver' ? 'Silver' :
+            metal,
+            ...r.slice(1)
+        ];
+    })
+    .filter(r =>
+        ['Gold', 'Silver'].includes(r[0]) &&
+        String(r[1] ?? '').trim() !== ''
     );
 
+    workbookLoaded = true;
+
     renderGuide();
+}
+
+// QUICK AUCTION SEARCH
+
+function searchText(r) {
+
+    const name = String(r[1] ?? '').toLowerCase();
+
+    let aliases = '';
+
+    if (/\bage\b/.test(name)) {
+        aliases += ' american gold eagle';
+    }
+
+    if (/\base\b/.test(name)) {
+        aliases += ' american silver eagle';
+    }
+
+    if (name.includes('peso')) {
+        aliases += ' mexican mexico';
+    }
+
+    if (name.includes('pre 1933') ||
+        name.includes('pre-1933')) {
+        aliases += ' pre33 pre-33 pre 33 liberty indian';
+    }
+
+    if (name.includes('rooster')) {
+        aliases += ' french france franc francs';
+    }
+
+    if (name.includes('gram')) {
+        aliases += ' gold bar';
+    }
+
+    return `${r[0]} ${name} ${aliases}`.toLowerCase();
 }
 
 // COMPACT BUYING GUIDE
 
 function renderGuide() {
 
+    if (!workbookLoaded) return;
+
     const q = $('search').value.toLowerCase().trim();
 
-    const filtered = products.filter(r =>
-        r.slice(0, 2).join(' ').toLowerCase().includes(q)
-    );
+    const terms = q.split(/\s+/).filter(Boolean);
+
+    const filtered = products.filter(r => {
+
+        const metalMatch =
+            selectedMetal === 'All' ||
+            r[0] === selectedMetal;
+
+        const searchable = searchText(r);
+
+        const textMatch =
+            terms.every(term => searchable.includes(term));
+
+        return metalMatch && textMatch;
+    });
+
+    $('productCount').textContent =
+        filtered.length + ' of ' +
+        products.length + ' products · USD';
 
     if (!filtered.length) {
+
         $('products').innerHTML =
             '<p>No matching products.</p>';
+
         return;
+    }
+
+    function price(v) {
+
+        if (typeof v !== 'number' ||
+            !Number.isFinite(v)) {
+            return '—';
+        }
+
+        return fmt(v, 2);
     }
 
     function metalRows(metal) {
@@ -275,54 +381,49 @@ function renderGuide() {
         if (!rows.length) return '';
 
         return `
+
             <tr class="group-row">
-                <td colspan="6" class="${metal.toLowerCase()}">
-                    ${metal}
+                <td colspan="4" class="${metal.toLowerCase()}">
+                    ${metal.toUpperCase()}
                 </td>
             </tr>
 
             ${rows.map(r => `
+
                 <tr>
                     <td>${esc(r[1])}</td>
-                    <td>${fmt(r[2], 4)}</td>
-                    <td>${money(r[3])}</td>
-                    <td class="good">${money(r[4])}</td>
-                    <td>${money(r[5])}</td>
-                    <td>
-                        ${pct(r[6])} / ${pct(r[7])}
-                    </td>
+                    <td>${price(r[3])}</td>
+                    <td class="good">${price(r[4])}</td>
+                    <td class="acceptable">${price(r[5])}</td>
                 </tr>
+
             `).join('')}
         `;
     }
 
     $('products').innerHTML = `
 
-        <div class="scroll">
-            <table class="guide-table">
-                <thead>
-                    <tr>
-                        <th>Product</th>
-                        <th>Oz</th>
-                        <th>Melt</th>
-                        <th>Strong</th>
-                        <th>Accept.</th>
-                        <th>Premiums</th>
-                    </tr>
-                </thead>
+        <table class="guide-table">
 
-                <tbody>
-                    ${metalRows('Gold')}
-                    ${metalRows('Silver')}
-                </tbody>
-            </table>
-        </div>
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Melt</th>
+                    <th>Strong</th>
+                    <th>Accept.</th>
+                </tr>
+            </thead>
 
-        <small>Premiums: Strong Buy / Acceptable Buy</small>
+            <tbody>
+                ${metalRows('Gold')}
+                ${metalRows('Silver')}
+            </tbody>
+
+        </table>
     `;
 }
 
-// WORKING ONEDRIVE CONNECTION
+// ONEDRIVE CONNECTION
 
 async function refresh() {
 
@@ -367,6 +468,7 @@ async function refresh() {
         });
 
         if (!res.ok) {
+
             throw Error(
                 'OneDrive lookup failed (HTTP ' +
                 res.status +
@@ -392,6 +494,7 @@ async function refresh() {
             });
 
             if (!itemRes.ok) {
+
                 throw Error(
                     'File ID lookup failed (HTTP ' +
                     itemRes.status + ').'
@@ -409,6 +512,7 @@ async function refresh() {
         }
 
         if (!url) {
+
             throw Error(
                 'Workbook located, but OneDrive did not provide a download URL.'
             );
@@ -422,6 +526,7 @@ async function refresh() {
         });
 
         if (!file.ok) {
+
             throw Error(
                 'Workbook download failed (HTTP ' +
                 file.status + ').'
@@ -463,6 +568,7 @@ async function init() {
 
         if (typeof msal === 'undefined' ||
             typeof XLSX === 'undefined') {
+
             throw Error('Required libraries did not load.');
         }
 
@@ -530,7 +636,26 @@ $('logout').onclick = async () => {
     }
 };
 
+// INSTANT SEARCH
+
 $('search').oninput = renderGuide;
+
+// GOLD / SILVER FILTERS
+
+document.querySelectorAll('[data-metal]').forEach(b => {
+
+    b.onclick = () => {
+
+        selectedMetal = b.dataset.metal;
+
+        document.querySelectorAll('[data-metal]').forEach(x => {
+
+            x.classList.toggle('active', x === b);
+        });
+
+        renderGuide();
+    };
+});
 
 // TWO-TAB NAVIGATION
 
@@ -541,11 +666,11 @@ document.querySelectorAll('[data-tab]').forEach(b => {
         const dashboard = b.dataset.tab === 'holdings';
 
         document.querySelectorAll('[data-tab]').forEach(x => {
+
             x.classList.toggle('active', x === b);
         });
 
         $('holdings').hidden = !dashboard;
-        $('activity').hidden = !dashboard;
         $('guide').hidden = dashboard;
     };
 });

@@ -46,9 +46,16 @@ const pct = v =>
         ? fmt(v * 100, 1) + '%'
         : '—';
 
+const numeric = v =>
+    typeof v === 'number' && Number.isFinite(v)
+        ? v : 0;
+
 let auth;
 let account;
 let products = [];
+let purchases = [];
+let purchaseYears = [];
+let selectedYear = null;
 let selectedMetal = 'All';
 let workbookLoaded = false;
 
@@ -70,9 +77,12 @@ function render(wb) {
 
     const d = wb.Sheets['Enhanced Dashboard'];
     const g = wb.Sheets.Guide;
+    const inv = wb.Sheets.Inventory_Master;
 
-    if (!d || !g) {
-        throw Error('Expected Enhanced Dashboard and Guide worksheets.');
+    if (!d || !g || !inv) {
+        throw Error(
+            'Expected Enhanced Dashboard, Guide and Inventory_Master worksheets.'
+        );
     }
 
     const val = (s, c) =>
@@ -82,7 +92,10 @@ function render(wb) {
 
     if (typeof v('C6') !== 'number' ||
         typeof v('C7') !== 'number') {
-        throw Error('Saved dashboard values missing. Recalculate and save in Excel.');
+
+        throw Error(
+            'Saved dashboard values missing. Recalculate and save in Excel.'
+        );
     }
 
     const total = v('C6') + v('C7');
@@ -195,76 +208,84 @@ function render(wb) {
         </table>
     `;
 
-    // PURCHASE ACTIVITY
-    // Located at bottom of Buying Guide
+    // READ PURCHASE RECORDS
 
-    const months = [
-        'Jan', 'Feb', 'Mar', 'Apr',
-        'May', 'Jun', 'Jul', 'Aug',
-        'Sep', 'Oct', 'Nov', 'Dec'
-    ];
+    purchases = [];
 
-    $('activity').innerHTML = `
+    const date1904 = !!wb.Workbook?.WBProps?.date1904;
 
-        <h2>${esc(v('B32'))} Purchase Activity</h2>
+    // Match the Excel SUMIFS range: rows 2 through 2000.
 
-        <div class="scroll">
-            <table class="activity-table">
+    const lastRow = Math.min(
+        2000,
+        XLSX.utils.decode_range(inv['!ref'] || 'A1').e.r + 1
+    );
 
-                <thead>
-                    <tr>
-                        <th rowspan="2">Month</th>
-                        <th colspan="2" class="gold"
-                            style="text-align:center">Gold</th>
-                        <th colspan="2" class="silver"
-                            style="text-align:center">Silver</th>
-                        <th rowspan="2">Total $</th>
-                    </tr>
+    for (let r = 2; r <= lastRow; r++) {
 
-                    <tr>
-                        <th style="text-align:right">Oz</th>
-                        <th>$</th>
-                        <th>Oz</th>
-                        <th>$</th>
-                    </tr>
-                </thead>
+        const metal = String(
+            val(inv, 'D' + r) ?? ''
+        ).toLowerCase();
 
-                <tbody>
+        if (metal !== 'gold' && metal !== 'silver') {
+            continue;
+        }
 
-                    ${months.map((month, i) => {
+        const rawDate = val(inv, 'C' + r);
 
-                        const r = i + 34;
+        if (typeof rawDate !== 'number' ||
+            !Number.isFinite(rawDate)) {
+            continue;
+        }
 
-                        return `
-                            <tr>
-                                <td>${month}</td>
-                                <td>${fmt(v('B' + r), 4)}</td>
-                                <td>${money(v('C' + r))}</td>
-                                <td>${fmt(v('D' + r), 2)}</td>
-                                <td>${money(v('E' + r))}</td>
-                                <td>${money(v('F' + r))}</td>
-                            </tr>
-                        `;
+        const date = XLSX.SSF.parse_date_code(
+            rawDate,
+            { date1904 }
+        );
 
-                    }).join('')}
+        if (!date || date.m < 1 || date.m > 12) {
+            continue;
+        }
 
-                    <tr class="total-row">
-                        <td>Total</td>
-                        <td>${fmt(v('B46'), 4)}</td>
-                        <td>${money(v('C46'))}</td>
-                        <td>${fmt(v('D46'), 2)}</td>
-                        <td>${money(v('E46'))}</td>
-                        <td>${money(v('F46'))}</td>
-                    </tr>
+        purchases.push({
+            year: date.y,
+            month: date.m,
+            metal: metal,
+            weight: numeric(val(inv, 'AH' + r)),
+            cost: numeric(val(inv, 'Q' + r))
+        });
+    }
 
-                </tbody>
+    // BUILD AVAILABLE YEARS
 
-            </table>
-        </div>
-    `;
+    const currentYear = new Date().getFullYear();
+    const savedYear = Number(v('B32'));
 
-    // LOAD ALL GOLD AND SILVER PRODUCTS
-    // No fixed product list or hardcoded prices
+    const years = new Set(
+        purchases.map(p => p.year)
+    );
+
+    years.add(currentYear);
+
+    if (Number.isInteger(savedYear) &&
+        savedYear >= 1900 &&
+        savedYear <= 9999) {
+        years.add(savedYear);
+    }
+
+    purchaseYears = Array.from(years)
+        .sort((a, b) => b - a);
+
+    if (!purchaseYears.includes(selectedYear)) {
+
+        selectedYear = purchaseYears.includes(savedYear)
+            ? savedYear
+            : currentYear;
+    }
+
+    renderActivity();
+
+    // LOAD ALL GOLD AND SILVER GUIDE PRODUCTS
 
     products = XLSX.utils.sheet_to_json(g, {
         header: 1,
@@ -273,7 +294,10 @@ function render(wb) {
         raw: true
     })
     .map(r => {
-        const metal = String(r[0] ?? '').trim().toLowerCase();
+
+        const metal = String(r[0] ?? '')
+            .trim()
+            .toLowerCase();
 
         return [
             metal === 'gold' ? 'Gold' :
@@ -290,6 +314,190 @@ function render(wb) {
     workbookLoaded = true;
 
     renderGuide();
+}
+
+// MONTHLY PURCHASE ACTIVITY
+
+function renderActivity() {
+
+    const months = [
+        'Jan', 'Feb', 'Mar', 'Apr',
+        'May', 'Jun', 'Jul', 'Aug',
+        'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+
+    const monthly = months.map(() => ({
+        goldOz: 0,
+        goldCost: 0,
+        silverOz: 0,
+        silverCost: 0
+    }));
+
+    // Calculate selected year from inventory records.
+
+    purchases.forEach(p => {
+
+        if (p.year !== selectedYear) return;
+
+        const m = monthly[p.month - 1];
+
+        if (p.metal === 'gold') {
+
+            m.goldOz += p.weight;
+            m.goldCost += p.cost;
+
+        } else if (p.metal === 'silver') {
+
+            m.silverOz += p.weight;
+            m.silverCost += p.cost;
+        }
+    });
+
+    // Calculate annual totals.
+
+    const totals = monthly.reduce((t, m) => {
+
+        t.goldOz += m.goldOz;
+        t.goldCost += m.goldCost;
+        t.silverOz += m.silverOz;
+        t.silverCost += m.silverCost;
+
+        return t;
+
+    }, {
+        goldOz: 0,
+        goldCost: 0,
+        silverOz: 0,
+        silverCost: 0
+    });
+
+    $('activity').innerHTML = `
+
+        <div class="activity-heading">
+
+            <h2>Purchase Activity</h2>
+
+            <select id="purchaseYear"
+                    aria-label="Purchase year">
+
+                ${purchaseYears.map(year => `
+                    <option value="${year}"
+                        ${year === selectedYear
+                            ? 'selected' : ''}>
+                        ${year}
+                    </option>
+                `).join('')}
+
+            </select>
+
+        </div>
+
+        <div class="scroll">
+
+            <table class="activity-table">
+
+                <thead>
+                    <tr>
+                        <th rowspan="2">Month</th>
+
+                        <th colspan="2"
+                            class="gold"
+                            style="text-align:center">
+                            Gold
+                        </th>
+
+                        <th colspan="2"
+                            class="silver"
+                            style="text-align:center">
+                            Silver
+                        </th>
+
+                        <th rowspan="2">Total $</th>
+                    </tr>
+
+                    <tr>
+                        <th style="text-align:right">Oz</th>
+                        <th>$</th>
+                        <th>Oz</th>
+                        <th>$</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    ${monthly.map((m, i) => `
+
+                        <tr>
+                            <td>${months[i]}</td>
+
+                            <td>
+                                ${fmt(m.goldOz, 4)}
+                            </td>
+
+                            <td>
+                                ${money(m.goldCost)}
+                            </td>
+
+                            <td>
+                                ${fmt(m.silverOz, 2)}
+                            </td>
+
+                            <td>
+                                ${money(m.silverCost)}
+                            </td>
+
+                            <td>
+                                ${money(
+                                    m.goldCost +
+                                    m.silverCost
+                                )}
+                            </td>
+                        </tr>
+
+                    `).join('')}
+
+                    <tr class="total-row">
+
+                        <td>Total</td>
+
+                        <td>
+                            ${fmt(totals.goldOz, 4)}
+                        </td>
+
+                        <td>
+                            ${money(totals.goldCost)}
+                        </td>
+
+                        <td>
+                            ${fmt(totals.silverOz, 2)}
+                        </td>
+
+                        <td>
+                            ${money(totals.silverCost)}
+                        </td>
+
+                        <td>
+                            ${money(
+                                totals.goldCost +
+                                totals.silverCost
+                            )}
+                        </td>
+
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+    `;
+
+    $('purchaseYear').onchange = e => {
+
+        selectedYear = Number(e.target.value);
+
+        renderActivity();
+    };
 }
 
 // QUICK AUCTION SEARCH
@@ -334,7 +542,9 @@ function renderGuide() {
 
     if (!workbookLoaded) return;
 
-    const q = $('search').value.toLowerCase().trim();
+    const q = $('search').value
+        .toLowerCase()
+        .trim();
 
     const terms = q.split(/\s+/).filter(Boolean);
 
@@ -346,8 +556,9 @@ function renderGuide() {
 
         const searchable = searchText(r);
 
-        const textMatch =
-            terms.every(term => searchable.includes(term));
+        const textMatch = terms.every(
+            term => searchable.includes(term)
+        );
 
         return metalMatch && textMatch;
     });
@@ -374,27 +585,67 @@ function renderGuide() {
         return fmt(v, 2);
     }
 
+    // DISPLAY PRICE WITH PREMIUM BELOW
+
+    function priceWithPremium(amount, premium) {
+
+        const displayedPrice = price(amount);
+
+        if (displayedPrice === '—') {
+            return '—';
+        }
+
+        return `
+            ${displayedPrice}
+            <span class="premium">
+                ${pct(premium)}
+            </span>
+        `;
+    }
+
     function metalRows(metal) {
 
-        const rows = filtered.filter(r => r[0] === metal);
+        const rows = filtered.filter(
+            r => r[0] === metal
+        );
 
         if (!rows.length) return '';
 
         return `
 
             <tr class="group-row">
-                <td colspan="4" class="${metal.toLowerCase()}">
+                <td colspan="4"
+                    class="${metal.toLowerCase()}">
+
                     ${metal.toUpperCase()}
+
                 </td>
             </tr>
 
             ${rows.map(r => `
 
                 <tr>
-                    <td>${esc(r[1])}</td>
-                    <td>${price(r[3])}</td>
-                    <td class="good">${price(r[4])}</td>
-                    <td class="acceptable">${price(r[5])}</td>
+
+                    <td>
+                        ${esc(r[1])}
+                    </td>
+
+                    <td>
+                        ${price(r[3])}
+                    </td>
+
+                    <td class="good">
+                        ${priceWithPremium(
+                            r[4], r[6]
+                        )}
+                    </td>
+
+                    <td class="acceptable">
+                        ${priceWithPremium(
+                            r[5], r[7]
+                        )}
+                    </td>
+
                 </tr>
 
             `).join('')}
@@ -482,7 +733,9 @@ async function refresh() {
 
         if (!url && meta.id) {
 
-            status('Workbook located. Retrieving download URL…');
+            status(
+                'Workbook located. Retrieving download URL…'
+            );
 
             const itemPath =
                 'https://graph.microsoft.com/v1.0/me/drive/items/' +
@@ -540,10 +793,13 @@ async function refresh() {
         }));
 
         status(
-            'Refreshed: ' + new Date().toLocaleString() +
+            'Refreshed: ' +
+            new Date().toLocaleString() +
             ' · Excel saved: ' +
             (meta.lastModifiedDateTime
-                ? new Date(meta.lastModifiedDateTime).toLocaleString()
+                ? new Date(
+                    meta.lastModifiedDateTime
+                  ).toLocaleString()
                 : 'unknown')
         );
 
@@ -569,7 +825,9 @@ async function init() {
         if (typeof msal === 'undefined' ||
             typeof XLSX === 'undefined') {
 
-            throw Error('Required libraries did not load.');
+            throw Error(
+                'Required libraries did not load.'
+            );
         }
 
         auth = new msal.PublicClientApplication(config);
@@ -591,12 +849,16 @@ async function init() {
 
         } else {
 
-            status('Sign in to access your private workbook.');
+            status(
+                'Sign in to access your private workbook.'
+            );
         }
 
     } catch (e) {
 
-        status('Initialization failed: ' + e.message);
+        status(
+            'Initialization failed: ' + e.message
+        );
 
     } finally {
 
@@ -627,7 +889,8 @@ $('logout').onclick = async () => {
 
         await auth.logoutRedirect({
             account,
-            postLogoutRedirectUri: config.auth.redirectUri
+            postLogoutRedirectUri:
+                config.auth.redirectUri
         });
 
     } catch (e) {
@@ -648,10 +911,11 @@ document.querySelectorAll('[data-metal]').forEach(b => {
 
         selectedMetal = b.dataset.metal;
 
-        document.querySelectorAll('[data-metal]').forEach(x => {
+        document.querySelectorAll('[data-metal]')
+            .forEach(x => {
 
-            x.classList.toggle('active', x === b);
-        });
+                x.classList.toggle('active', x === b);
+            });
 
         renderGuide();
     };
@@ -663,12 +927,14 @@ document.querySelectorAll('[data-tab]').forEach(b => {
 
     b.onclick = () => {
 
-        const dashboard = b.dataset.tab === 'holdings';
+        const dashboard =
+            b.dataset.tab === 'holdings';
 
-        document.querySelectorAll('[data-tab]').forEach(x => {
+        document.querySelectorAll('[data-tab]')
+            .forEach(x => {
 
-            x.classList.toggle('active', x === b);
-        });
+                x.classList.toggle('active', x === b);
+            });
 
         $('holdings').hidden = !dashboard;
         $('guide').hidden = dashboard;

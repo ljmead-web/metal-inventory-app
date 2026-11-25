@@ -29,28 +29,28 @@ body {
 header, main {
     max-width: 850px;
     margin: auto;
-    padding: 6px 8px;
+    padding: 5px 6px;
 }
 
 header {
-    padding-top: calc(8px + env(safe-area-inset-top));
+    padding-top: calc(6px + env(safe-area-inset-top));
 }
 
 h1 {
-    font-size: 21px;
+    font-size: 20px;
     margin: 0;
 }
 
 h2, h3 {
-    font-size: 14px;
-    margin: 7px 0 3px;
+    font-size: 13px;
+    margin: 6px 0 3px;
 }
 
 button, input {
     font: inherit;
     border: 1px solid #94b1cc;
     border-radius: 4px;
-    padding: 6px 9px;
+    padding: 6px 8px;
     background: #b6cde2;
     color: #244563;
 }
@@ -72,7 +72,7 @@ button.active {
 nav {
     display: flex;
     gap: 4px;
-    margin: 6px 0;
+    margin: 5px 0;
 }
 
 nav button {
@@ -83,7 +83,7 @@ nav button {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 6px;
+    gap: 5px;
 }
 
 small, .muted {
@@ -103,12 +103,12 @@ small, .muted {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     margin: 2px 0;
 }
 
 .big {
-    font-size: 22px;
+    font-size: 21px;
     color: #244563;
     font-weight: bold;
 }
@@ -117,10 +117,22 @@ small, .muted {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 5px 6px;
+    padding: 5px;
     background: #f5f9fd;
     border: 1px solid #a6bfd5;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
+}
+
+.spot-strip {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 4px 6px;
+    background: #ffffff;
+    border: 1px solid #a6bfd5;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 600;
 }
 
 table {
@@ -129,12 +141,12 @@ table {
     background: white;
     font-size: 12px;
     font-variant-numeric: tabular-nums;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
 }
 
 td, th {
     padding: 3px 4px;
-    line-height: 1.25;
+    line-height: 1.2;
     border: 1px solid #afc5da;
     text-align: right;
     white-space: nowrap;
@@ -166,6 +178,7 @@ tbody tr:nth-child(odd) {
     background: #a9c4de;
     font-weight: bold;
     text-align: left;
+    padding: 3px 4px;
 }
 
 .gold {
@@ -177,7 +190,12 @@ tbody tr:nth-child(odd) {
 }
 
 .good {
-    color: #24643d;
+    color: #21643b;
+    font-weight: 700;
+}
+
+.acceptable {
+    color: #805a19;
     font-weight: 600;
 }
 
@@ -199,8 +217,76 @@ progress {
 
 input {
     width: 100%;
-    background: #f5f9fd;
-    margin-bottom: 5px;
+    background: #ffffff;
+    margin-bottom: 4px;
+}
+
+#search {
+    font-size: 16px;
+    padding: 5px 7px;
+}
+
+.filters {
+    display: flex;
+    gap: 3px;
+    margin-bottom: 4px;
+}
+
+.filters button {
+    flex: 1;
+    padding: 5px;
+}
+
+.guide-table {
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.guide-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.guide-table th,
+.guide-table td {
+    border-right: 1px solid #afc5da;
+    border-bottom: 1px solid #afc5da;
+    border-top: 0;
+    border-left: 0;
+}
+
+.guide-table th:first-child,
+.guide-table td:first-child {
+    border-left: 1px solid #afc5da;
+}
+
+.guide-table thead th {
+    border-top: 1px solid #afc5da;
+}
+
+.guide-table th:first-child {
+    width: 43%;
+}
+
+.guide-table th:not(:first-child) {
+    width: 19%;
+}
+
+.guide-table td:first-child {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.guide-table td {
+    padding: 3px;
+    line-height: 1.15;
+}
+
+#productCount {
+    display: block;
+    margin: 2px 0 5px;
 }
 
 [hidden] {
@@ -210,7 +296,7 @@ input {
 #status {
     overflow-wrap: anywhere;
     display: block;
-    margin: 3px 0;
+    margin: 2px 0;
     font-size: 10px;
 }
 
@@ -223,16 +309,6 @@ footer {
 footer button {
     font-size: 11px;
     padding: 4px 7px;
-}
-
-.grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
-}
-
-.grid strong {
-    display: block;
 }
 
 @media (max-width: 480px) {
@@ -253,12 +329,17 @@ footer button {
         padding: 3px 2px;
     }
 
-    .guide-table td:first-child {
-        white-space: normal;
+    .guide-table {
+        font-size: 11px;
+    }
+
+    .guide-table td,
+    .guide-table th {
+        padding: 3px 2px;
     }
 
     .big {
-        font-size: 20px;
+        font-size: 19px;
     }
 }
 </style>
@@ -276,30 +357,50 @@ footer button {
     <small id="status" role="status">Connecting...</small>
 
     <nav>
-        <button data-tab="holdings" class="active">Dashboard</button>
-        <button data-tab="guide">Buying Guide</button>
+        <button data-tab="holdings">Dashboard</button>
+        <button data-tab="guide" class="active">Buying Guide</button>
     </nav>
 </header>
 
 <main>
 
-    <section id="holdings">
+    <section id="holdings" hidden>
         <p>Sign in to load your workbook.</p>
     </section>
 
-    <section id="activity">
-    </section>
+    <section id="guide">
 
-    <section id="guide" hidden>
+        <div id="guideSpot" class="spot-strip">
+            <span class="gold">Gold: —</span>
+            <span class="silver">Silver: —</span>
+        </div>
+
         <input id="search"
-               placeholder="Search buying guide"
-               aria-label="Search buying guide">
-        <div id="products"></div>
+               type="search"
+               placeholder="Find coin or product..."
+               aria-label="Search buying guide"
+               autocomplete="off">
+
+        <div class="filters">
+            <button data-metal="All" class="active">All</button>
+            <button data-metal="Gold">Gold</button>
+            <button data-metal="Silver">Silver</button>
+        </div>
+
+        <div id="products">
+            <p>Sign in to load your buying guide.</p>
+        </div>
+
+        <small id="productCount"></small>
+
+        <section id="activity">
+        </section>
+
     </section>
 
     <footer>
         <div class="actions">
-            <span>Read-only · Saved Excel values</span>
+            <span>Read-only · Prices in USD · Saved Excel values</span>
             <button id="logout" hidden>Sign out</button>
         </div>
     </footer>
@@ -308,7 +409,7 @@ footer button {
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@4.25.1/lib/msal-browser.min.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 
 </body>
 </html>

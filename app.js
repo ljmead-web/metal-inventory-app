@@ -235,15 +235,16 @@ async function refresh() {
             throw e;
         }
 
-        const res = await fetch(
-            path + '?$select=name,lastModifiedDateTime,@microsoft.graph.downloadUrl',
-            {
-                headers: {
-                    Authorization: 'Bearer ' + token.accessToken
-                },
-                cache: 'no-store'
-            }
-        );
+        const headers = {
+            Authorization: 'Bearer ' + token.accessToken
+        };
+
+        // Retrieve complete workbook metadata.
+
+        const res = await fetch(path, {
+            headers,
+            cache: 'no-store'
+        });
 
         if (!res.ok) {
             throw Error(
@@ -253,12 +254,49 @@ async function refresh() {
             );
         }
 
-        const meta = await res.json();
-        const url = meta['@microsoft.graph.downloadUrl'];
+        let meta = await res.json();
+
+        let url = meta['@microsoft.graph.downloadUrl'];
+
+        // If necessary, retrieve metadata using the file ID.
+
+        if (!url && meta.id) {
+
+            status('Workbook located. Retrieving download URL…');
+
+            const itemPath =
+                'https://graph.microsoft.com/v1.0/me/drive/items/' +
+                encodeURIComponent(meta.id);
+
+            const itemRes = await fetch(itemPath, {
+                headers,
+                cache: 'no-store'
+            });
+
+            if (!itemRes.ok) {
+                throw Error(
+                    'File ID lookup failed (HTTP ' +
+                    itemRes.status + ').'
+                );
+            }
+
+            const itemMeta = await itemRes.json();
+
+            meta = {
+                ...meta,
+                ...itemMeta
+            };
+
+            url = meta['@microsoft.graph.downloadUrl'];
+        }
 
         if (!url) {
-            throw Error('OneDrive did not provide a download URL.');
+            throw Error(
+                'Workbook located, but OneDrive did not provide a download URL.'
+            );
         }
+
+        status('Downloading Excel workbook…');
 
         const file = await fetch(url, {
             cache: 'no-store',
@@ -271,6 +309,8 @@ async function refresh() {
                 file.status + ').'
             );
         }
+
+        status('Reading Excel worksheets…');
 
         render(XLSX.read(await file.arrayBuffer(), {
             type: 'array'

@@ -59,11 +59,125 @@ let selectedYear = null;
 let selectedMetal = 'All';
 let workbookLoaded = false;
 
+let currentWorkbook = null;
+let inventoryStatus = 'Inventory not loaded';
+let livePrices = null;
+let priceBusy = false;
+let inventoryBusy = false;
+let priceError = '';
+
+// LOAD LAST SUCCESSFUL SPOT PRICES
+
+try {
+    const cached = JSON.parse(
+        localStorage.getItem('metalSpotCacheV1')
+    );
+
+    if (
+        cached &&
+        cached.gold > 0 &&
+        cached.silver > 0 &&
+        Number.isFinite(cached.time)
+    ) {
+        livePrices = cached;
+    }
+
+} catch (_) {}
+
+// REFRESH STATUS
+
+function showRefreshStatus() {
+
+    const priceStatus = livePrices
+        ? 'Spot: ' +
+          new Date(livePrices.time).toLocaleString() +
+          (priceError
+              ? ' (cached; refresh failed)'
+              : '')
+        : 'Spot: saved Excel prices (live unavailable)';
+
+    status(inventoryStatus + ' · ' + priceStatus);
+}
+
+// INDEPENDENT LIVE METAL PRICES
+
+async function refreshPrices() {
+
+    if (!account || priceBusy) return;
+
+    priceBusy = true;
+
+    try {
+
+        const quotes = await Promise.all(
+            ['XAU', 'XAG'].map(async symbol => {
+
+                const res = await fetch(
+                    'https://api.gold-api.com/price/' + symbol,
+                    {
+                        cache: 'no-store',
+                        signal: AbortSignal.timeout(15000)
+                    }
+                );
+
+                if (!res.ok) {
+                    throw Error(
+                        'Price HTTP ' + res.status
+                    );
+                }
+
+                const data = await res.json();
+
+                if (
+                    !Number.isFinite(data.price) ||
+                    data.price <= 0
+                ) {
+                    throw Error('Invalid price');
+                }
+
+                return data.price;
+            })
+        );
+
+        livePrices = {
+            gold: quotes[0],
+            silver: quotes[1],
+            time: Date.now()
+        };
+
+        priceError = '';
+
+        try {
+            localStorage.setItem(
+                'metalSpotCacheV1',
+                JSON.stringify(livePrices)
+            );
+        } catch (_) {}
+
+    } catch (e) {
+
+        priceError = e.message;
+
+    } finally {
+
+        priceBusy = false;
+
+        if (currentWorkbook && account) {
+            render(currentWorkbook);
+        }
+
+        if (!inventoryBusy) {
+            showRefreshStatus();
+        }
+    }
+}
+
 function status(s) {
     $('status').textContent = s;
 }
 
 function controls(busy = false) {
+
     $('login').hidden = !!account;
     $('logout').hidden = !account;
     $('refresh').disabled = !account || busy;
@@ -88,17 +202,48 @@ function render(wb) {
     const val = (s, c) =>
         s[c]?.t === 'e' ? null : s[c]?.v;
 
-    const v = c => val(d, c);
+    const saved = c => val(d, c);
 
-    if (typeof v('C6') !== 'number' ||
-        typeof v('C7') !== 'number') {
+    // USE LIVE SPOT PRICES WHEN AVAILABLE
 
-        throw Error(
-            'Saved dashboard values missing. Recalculate and save in Excel.'
-        );
-    }
+    const gold = livePrices?.gold ?? saved('B2');
+    const silver = livePrices?.silver ?? saved('B3');
 
-    const total = v('C6') + v('C7');
+    // RECALCULATE MARKET VALUES INDEPENDENTLY
+
+    const calculated = {
+
+        B2: gold,
+
+        B3: silver,
+
+        B5: silver > 0
+            ? gold / silver
+            : null,
+
+        C6: Number.isFinite(saved('B6')) &&
+            silver > 0
+                ? saved('B6') * silver
+                : saved('C6'),
+
+        C7: Number.isFinite(saved('B7')) &&
+            gold > 0
+                ? saved('B7') * gold
+                : saved('C7')
+    };
+
+    const v = c =>
+        Object.prototype.hasOwnProperty.call(
+            calculated, c
+        )
+            ? calculated[c]
+            : saved(c);
+
+    const total =
+        Number.isFinite(v('C6')) &&
+        Number.isFinite(v('C7'))
+            ? v('C6') + v('C7')
+            : null;
 
     // SPOT PRICES
 
@@ -214,7 +359,7 @@ function render(wb) {
 
     const date1904 = !!wb.Workbook?.WBProps?.date1904;
 
-    // Match the Excel SUMIFS range: rows 2 through 2000.
+    // MATCH EXCEL SUMIFS RANGE
 
     const lastRow = Math.min(
         2000,
@@ -304,7 +449,32 @@ function render(wb) {
             metal === 'silver' ? 'Silver' :
             metal,
             ...r.slice(1)
-        ];
+
+        ].map((value, i) => {
+
+            // RECALCULATE MELT AND BUYING PRICES
+
+            if (
+                !livePrices ||
+                ![3, 4, 5].includes(i)
+            ) {
+                return value;
+            }
+
+            const oldSpot = saved(
+                metal === 'gold' ? 'B2' : 'B3'
+            );
+
+            const newSpot =
+                metal === 'gold' ? gold : silver;
+
+            // PRESERVE EXISTING PREMIUM STRUCTURE
+
+            return Number.isFinite(value) &&
+                oldSpot > 0
+                    ? value * newSpot / oldSpot
+                    : value;
+        });
     })
     .filter(r =>
         ['Gold', 'Silver'].includes(r[0]) &&
@@ -333,7 +503,7 @@ function renderActivity() {
         silverCost: 0
     }));
 
-    // Calculate selected year from inventory records.
+    // CALCULATE SELECTED YEAR
 
     purchases.forEach(p => {
 
@@ -353,7 +523,7 @@ function renderActivity() {
         }
     });
 
-    // Calculate annual totals.
+    // CALCULATE ANNUAL TOTALS
 
     const totals = monthly.reduce((t, m) => {
 
@@ -678,7 +848,9 @@ function renderGuide() {
 
 async function refresh() {
 
-    if (!account) return;
+    if (!account || inventoryBusy) return;
+
+    inventoryBusy = true;
 
     controls(true);
     status('Reading OneDrive…');
@@ -788,12 +960,17 @@ async function refresh() {
 
         status('Reading Excel worksheets…');
 
-        render(XLSX.read(await file.arrayBuffer(), {
-            type: 'array'
-        }));
+        const wb = XLSX.read(
+            await file.arrayBuffer(),
+            { type: 'array' }
+        );
 
-        status(
-            'Refreshed: ' +
+        render(wb);
+
+        currentWorkbook = wb;
+
+        inventoryStatus = (
+            'Inventory: ' +
             new Date().toLocaleString() +
             ' · Excel saved: ' +
             (meta.lastModifiedDateTime
@@ -805,12 +982,17 @@ async function refresh() {
 
     } catch (e) {
 
-        status(
-            'Refresh failed: ' + e.message +
+        inventoryStatus = (
+            'Inventory refresh failed: ' +
+            e.message +
             ' — any displayed values may be old.'
         );
 
     } finally {
+
+        inventoryBusy = false;
+
+        showRefreshStatus();
 
         controls();
     }
@@ -845,7 +1027,12 @@ async function init() {
 
             auth.setActiveAccount(account);
 
-            await refresh();
+            // REFRESH INVENTORY AND PRICES INDEPENDENTLY
+
+            await Promise.all([
+                refresh(),
+                refreshPrices()
+            ]);
 
         } else {
 
@@ -881,7 +1068,12 @@ $('login').onclick = async () => {
     }
 };
 
-$('refresh').onclick = refresh;
+// MANUAL REFRESH UPDATES BOTH SOURCES
+
+$('refresh').onclick = () => Promise.all([
+    refresh(),
+    refreshPrices()
+]);
 
 $('logout').onclick = async () => {
 
@@ -940,5 +1132,26 @@ document.querySelectorAll('[data-tab]').forEach(b => {
         $('guide').hidden = dashboard;
     };
 });
+
+// AUTOMATIC SPOT PRICE REFRESH EVERY 5 MINUTES
+
+setInterval(() => {
+
+    if (!document.hidden) {
+        refreshPrices();
+    }
+
+}, 5 * 60 * 1000);
+
+// REFRESH SPOT PRICES WHEN APP IS REOPENED
+
+document.addEventListener('visibilitychange', () => {
+
+    if (!document.hidden && account) {
+        refreshPrices();
+    }
+});
+
+// START APPLICATION
 
 init();
